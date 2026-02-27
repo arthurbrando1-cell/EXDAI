@@ -1,48 +1,42 @@
 import streamlit as st
-import google.generativeai as genai
+from huggingface_hub import InferenceClient
 import time
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Terminal IA", page_icon="📟", layout="centered")
 
-# --- ESTILO CSS (Preto, Branco e Verde) ---
+# --- ESTILO CSS HACKER ---
 st.markdown("""
     <style>
+    /* Fundo Preto e Texto Branco */
     .stApp {
-        background: linear-gradient(45deg, #000000, #050505, #001200);
-        background-size: 400% 400%;
-        animation: gradient 15s ease infinite;
+        background-color: #000000;
         color: #ffffff;
     }
-    @keyframes gradient {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
+    /* Estilo das mensagens do Chat */
     .stChatMessage {
         background-color: rgba(0, 255, 65, 0.05) !important;
-        border: 1px solid #00ff41;
+        border: 1px solid #00ff41 !important;
         border-radius: 10px;
+        color: white !important;
     }
-    code { color: #00ff41 !important; }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* Estilo do campo de digitação */
+    .stChatInput {
+        border: 1px solid #00ff41 !important;
+        border-radius: 5px;
+    }
+    /* Esconder elementos padrão */
+    #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DA API (GEMINI) ---
-# Dica: No Streamlit Cloud, use st.secrets["GEMINI_KEY"] por segurança
-GOOGLE_API_KEY = "COLE_SUA_CHAVE_AQUI" 
+# --- CONFIGURAÇÃO DO TOKEN (SUA CHAVE AQUI) ---
+HF_TOKEN = "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" # <--- APAGUE ISSO E COLE SEU TOKEN hf_...
 
-if GOOGLE_API_KEY == "COLE_SUA_CHAVE_AQUI":
-    st.error("ERRO CRÍTICO: CHAVE DE API NÃO CONFIGURADA NO CÓDIGO.")
-    st.stop()
+# Inicializa o cliente com o modelo Llama 3
+client = InferenceClient("meta-llama/Meta-Llama-3-8B-Instruct", token=HF_TOKEN)
 
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-# --- INTRO ANIMADA ---
+# --- INTRO ANIMADA (OPCIONAL) ---
 if "intro_done" not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
@@ -51,40 +45,50 @@ if "intro_done" not in st.session_state:
         for i in range(100):
             time.sleep(0.01)
             bar.progress(i + 1)
-        st.markdown("<p style='text-align: center; color: #00ff41;'>CONEXÃO ESTABELECIDA COM SUCESSO...</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #00ff41;'>CONEXÃO CRIPTOGRAFADA ESTABELECIDA...</p>", unsafe_allow_html=True)
         time.sleep(1)
     placeholder.empty()
     st.session_state["intro_done"] = True
 
-# --- LÓGICA DO CHAT ---
+# --- INTERFACE DO CHAT ---
 st.markdown("<h1 style='color: #00ff41; font-family: monospace;'>📟 TERMINAL_IA v1.0</h1>", unsafe_allow_html=True)
 
-# Inicializa o chat no estado da sessão
-if "chat_session" not in st.session_state:
-    st.session_state.chat_session = model.start_chat(history=[])
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Exibe mensagens anteriores
-for message in st.session_state.chat_session.history:
-    role = "user" if message.role == "user" else "assistant"
-    with st.chat_message(role):
-        st.markdown(message.parts[0].text)
+# Exibe histórico
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 # Input de comando
-if prompt := st.chat_input("Digite um comando para a IA..."):
-    # Mostra o que o usuário digitou
+if prompt := st.chat_input("Digite um comando..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-    
-    # Resposta em tempo real (Stream)
+
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
+        placeholder = st.empty()
+        full_text = ""
         
         try:
-            response = st.session_state.chat_session.send_message(prompt, stream=True)
-            for chunk in response:
-                full_response += chunk.text
-                message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
+            # Faz a chamada para a API do Hugging Face
+            # O sistema vai "streamar" a resposta (escrever aos poucos)
+            output = client.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                stream=True,
+                temperature=0.7
+            )
+            
+            for chunk in output:
+                token = chunk.choices[0].delta.content
+                if token:
+                    full_text += token
+                    placeholder.markdown(full_text + "▌")
+            
+            placeholder.markdown(full_text)
+            st.session_state.messages.append({"role": "assistant", "content": full_text})
+            
         except Exception as e:
-            st.error(f"ERRO DE CONEXÃO: {e}")
+            st.error(f"ERRO DE CONEXÃO: Verifique se o seu Token está correto.")
