@@ -1,16 +1,15 @@
 import streamlit as st
-from openai import OpenAI
+import google.generativeai as genai
 import time
 
-# Configurações da Página
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Terminal IA", page_icon="📟", layout="centered")
 
-# --- ESTILO CSS CUSTOMIZADO (O "Tapa" no Visual) ---
+# --- ESTILO CSS (Preto, Branco e Verde) ---
 st.markdown("""
     <style>
-    /* Fundo Animado Simples (Gradiente) */
     .stApp {
-        background: linear-gradient(45deg, #000000, #0a0a0a, #001a00);
+        background: linear-gradient(45deg, #000000, #050505, #001200);
         background-size: 400% 400%;
         animation: gradient 15s ease infinite;
         color: #ffffff;
@@ -20,37 +19,39 @@ st.markdown("""
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
-
-    /* Estilo das mensagens */
     .stChatMessage {
-        background-color: rgba(255, 255, 255, 0.05) !important;
+        background-color: rgba(0, 255, 65, 0.05) !important;
         border: 1px solid #00ff41;
         border-radius: 10px;
-        color: white !important;
     }
-
-    /* Customização do Input */
-    .stChatInput {
-        border-top: 1px solid #00ff41 !important;
-    }
-
-    /* Esconder o menu padrão do Streamlit para ficar mais 'clean' */
+    code { color: #00ff41 !important; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- INTRO COM ANIMAÇÃO ---
+# --- CONFIGURAÇÃO DA API (GEMINI) ---
+# Dica: No Streamlit Cloud, use st.secrets["GEMINI_KEY"] por segurança
+GOOGLE_API_KEY = "COLE_SUA_CHAVE_AQUI" 
+
+if GOOGLE_API_KEY == "COLE_SUA_CHAVE_AQUI":
+    st.error("ERRO CRÍTICO: CHAVE DE API NÃO CONFIGURADA NO CÓDIGO.")
+    st.stop()
+
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# --- INTRO ANIMADA ---
 if "intro_done" not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
-        st.markdown("<h1 style='text-align: center; color: #00ff41;'>INICIALIZANDO SISTEMA...</h1>", unsafe_allow_html=True)
-        progress_bar = st.progress(0)
-        for percent_complete in range(100):
+        st.markdown("<h1 style='text-align: center; color: #00ff41; font-family: monospace;'>[ SISTEMA INICIALIZANDO ]</h1>", unsafe_allow_html=True)
+        bar = st.progress(0)
+        for i in range(100):
             time.sleep(0.01)
-            progress_bar.progress(percent_complete + 1)
-        st.success("CONEXÃO ESTABELECIDA")
+            bar.progress(i + 1)
+        st.markdown("<p style='text-align: center; color: #00ff41;'>CONEXÃO ESTABELECIDA COM SUCESSO...</p>", unsafe_allow_html=True)
         time.sleep(1)
     placeholder.empty()
     st.session_state["intro_done"] = True
@@ -58,48 +59,32 @@ if "intro_done" not in st.session_state:
 # --- LÓGICA DO CHAT ---
 st.markdown("<h1 style='color: #00ff41; font-family: monospace;'>📟 TERMINAL_IA v1.0</h1>", unsafe_allow_html=True)
 
-# Sidebar para a chave
-with st.sidebar:
-    st.title("Configurações")
-    api_key = st.text_input("Insira sua OpenAI API Key", type="password")
-    st.info("O fundo verde neon indica que o sistema está pronto.")
+# Inicializa o chat no estado da sessão
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = model.start_chat(history=[])
 
-# Inicializa histórico
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# Exibe mensagens anteriores
+for message in st.session_state.chat_session.history:
+    role = "user" if message.role == "user" else "assistant"
+    with st.chat_message(role):
+        st.markdown(message.parts[0].text)
 
-# Exibe mensagens
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-# Input do usuário
-if prompt := st.chat_input("Digite um comando..."):
-    if not api_key:
-        st.error("ERRO: API KEY AUSENTE")
-    else:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        client = OpenAI(api_key=api_key)
+# Input de comando
+if prompt := st.chat_input("Digite um comando para a IA..."):
+    # Mostra o que o usuário digitou
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    
+    # Resposta em tempo real (Stream)
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
         
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            # Request para a API (com efeito de streaming/digitação)
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-                stream=True,
-            )
-            
+        try:
+            response = st.session_state.chat_session.send_message(prompt, stream=True)
             for chunk in response:
-                if chunk.choices[0].delta.content:
-                    full_response += chunk.choices[0].delta.content
-                    message_placeholder.markdown(full_response + "▌")
-            
+                full_response += chunk.text
+                message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
-        
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            st.error(f"ERRO DE CONEXÃO: {e}")
